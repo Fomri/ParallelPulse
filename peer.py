@@ -18,7 +18,7 @@ class Peer:
                 s.sendall(json.dumps(request).encode('utf-8'))
 
                 raw_response = s.recv(4096).decode('utf-8')
-                response = json.load(raw_response)
+                response = json.loads(raw_response)
 
                 self.port = response.get("assigned_port")
                 self.bandwidth = response.get("bandwidth")
@@ -26,7 +26,7 @@ class Peer:
                 print(f"[+] Connected to server! Port: {self.port} | Bandwidth: {self.bandwidth} Mbps")
 
                 if not self.file_content:
-                    self.server_file_list = response.get("file_name")
+                    self.server_file_list.append(response.get("file_name"))
         except Exception as e:
             print(f"[-] Failed to register to server: {e}")
 
@@ -35,5 +35,5 @@ if __name__ == "__main__":
     print("Registering with server...")
     peer = Peer()
     peer.register_to_server()
-    
+
 
