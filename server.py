@@ -1,6 +1,5 @@
 import socket
 import json
-import random
 import threading
 
 SERVER_IP = '127.0.0.1'
@@ -10,11 +9,15 @@ BASE_PORT = 8001
 port_counter = 0
 
 DUMMY_FILE_NAME = "project_demo.txt"
-DUMMY_FILE_CONTENT = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+DUMMY_FILE_CONTENT = "0123456789"
+
+# peers_table: (ip, port) -> {bandwidth, file_name}
+# in this POC there is only one file, but in the real project there will be a file list
+peers_table = {}
 
 def start_server():
     """
-    starting the main server and listen to connections in port 5000
+    starting the main server and listens to connections in port 5000
     """
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -32,7 +35,7 @@ def start_server():
 
 def handle_client(client_socket, client_address):
     """
-    used to handle requests and nevigate them to their asked action.
+    used to handle requests and navigate them to their asked action.
     """
     try:
         raw_data = client_socket.recv(4096).decode('utf-8')
@@ -46,6 +49,8 @@ def handle_client(client_socket, client_address):
             handle_register(client_socket, client_address)
         elif action == "QUERY":
             handle_query(client_socket, data)
+        elif action == "LIST_FILES": 
+            handle_list_files(client_socket)
         else:
             response = {"status": "ERROR", "message": "Unknown action"}
             client_socket.sendall(json.dumps(response).encode('utf-8'))
@@ -62,7 +67,7 @@ def handle_register(client_socket, client_address):
     """
     global port_counter
 
-    bandwidth_list = [100,20,40,50,30] #the first will get 100, second 20...
+    bandwidth_list = [50,30,20,10,5] # the first will get 50, second 30...
     assigned_port = BASE_PORT + port_counter
     if port_counter < 4:
         file_payload = DUMMY_FILE_CONTENT
@@ -80,9 +85,12 @@ def handle_register(client_socket, client_address):
     }
 
     print(f"[+] Registered Peer #{port_counter} | Port: {assigned_port} | Bandwidth: {assigned_bandwidth} Mbps | Has Chunks: {file_payload is not None}")
-    """
-    TODO: add the functions that send the information to the peer table.
-    """
+
+    peer_ip = SERVER_IP  # all peers run on localhost for this POC
+    peers_table[(peer_ip, assigned_port)] = {
+        "bandwidth": assigned_bandwidth,
+        "file_name": DUMMY_FILE_NAME if file_payload is not None else None
+    }
     client_socket.sendall(json.dumps(response).encode('utf-8'))
 
 
@@ -93,20 +101,29 @@ def handle_query(client_socket, request_data):
     requested_file = request_data.get("file_name")
     print(f"[*] Query received for file: '{requested_file}'")
 
-    # TODO: here we need to retrieve information from the table.
-    # this is just for demo
-    dummy_peers_found = [
-        {"ip": "127.0.0.1", "port": 8001, "bandwidth": 100},
-        {"ip": "127.0.0.1", "port": 8002, "bandwidth": 50},
-        {"ip": "127.0.0.1", "port": 8003, "bandwidth": 200}
+    matching_peers = [
+        {"ip": ip, "port": port, "bandwidth": info["bandwidth"]}
+        for (ip, port), info in peers_table.items()
+        if info["file_name"] == requested_file
     ]
 
     response = {
         "status": "SUCCESS",
         "file_name": requested_file,
-        "peers": dummy_peers_found
+        "peers": matching_peers,
+        "file_size": len(DUMMY_FILE_CONTENT)
     }
 
+    client_socket.sendall(json.dumps(response).encode('utf-8'))
+
+
+def handle_list_files(client_socket):
+    # returns all distinct file names currently held by at least one registered peer
+    available_files = list({
+        info["file_name"] for info in peers_table.values()
+        if info["file_name"] is not None
+    })
+    response = {"status": "SUCCESS", "files": available_files}
     client_socket.sendall(json.dumps(response).encode('utf-8'))
 
 
